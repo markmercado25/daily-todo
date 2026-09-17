@@ -96,9 +96,23 @@ body.dark .theme-knob-small { transform:translateX(16px); background:var(--grad-
 .page-header h1 { font-family:'Plus Jakarta Sans',-apple-system,sans-serif; font-size:clamp(1.8rem,5vw,3rem); font-weight:800; letter-spacing:-.02em; color:var(--title); line-height:1.1; }
 #page-today .page-header h1 {
   background:var(--grad-full); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
-  background-size:200% auto; animation:gradShift 8s ease-in-out infinite alternate;
+  background-size:200% auto; animation:gradShift 8s ease-in-out infinite alternate; cursor:pointer;
+}
+#page-today .page-header h1.editing {
+  background:none; -webkit-text-fill-color:var(--ink); animation:none; cursor:default;
+  display:flex; align-items:center; justify-content:center; gap:8px;
 }
 @keyframes gradShift { from{background-position:0% 50%} to{background-position:100% 50%} }
+.title-edit-input {
+  font-family:'Plus Jakarta Sans',-apple-system,sans-serif; font-size:clamp(1.3rem,4vw,2rem); font-weight:800;
+  letter-spacing:-.02em; color:var(--ink); background:var(--paper); border:1.5px solid #8134AF; border-radius:12px;
+  padding:4px 12px; outline:none; width:9ch; text-align:center;
+}
+.title-confirm-btn {
+  flex-shrink:0; width:36px; height:36px; border-radius:50%; border:none; color:#fff; background:var(--grad-full);
+  display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;
+}
+.title-confirm-btn svg { width:18px; height:18px; stroke:currentColor; stroke-width:3; fill:none; stroke-linecap:round; stroke-linejoin:round; }
 .page-label { color:var(--ink-light); font-weight:600; font-size:.85rem; margin-top:4px; }
 #page-tomorrow .page-header h1 { color:#8134AF; }
 body.dark #page-tomorrow .page-header h1 { color:#B89CF0; }
@@ -514,7 +528,7 @@ body.dark .todo-item-inner,body.dark .drag-ghost { background:#16121f; }
       <span class="date-line" id="date-today"></span>
       <button class="theme-toggle-small" id="theme-toggle" aria-label="Toggle dark mode"><span class="theme-knob-small" id="theme-knob">☀️</span></button>
     </div>
-    <h1>Daily To-Do</h1>
+    <h1 id="today-title" title="Click to personalize">Daily To-Do</h1>
   </header>
   <p class="swipe-hint">← yesterday &nbsp;&nbsp; tomorrow →</p>
   <div class="sections-wrapper">
@@ -2008,6 +2022,63 @@ let milT=null;
 function showMilestone(text,streak){const el=document.getElementById('milestone-toast');document.getElementById('milestone-text').textContent=`${streak} days in a row!`;document.getElementById('milestone-sub').textContent=`"${text}" — keep it up! 🎉`;el.classList.add('show');clearTimeout(milT);milT=setTimeout(()=>el.classList.remove('show'),3500);}
 function toggleTheme(){const d=document.body.classList.toggle('dark');document.documentElement.classList.toggle('dark-root',d);document.getElementById('theme-knob').textContent=d?'🌙':'☀️';try{localStorage.setItem('todo-theme',d?'dark':'light');}catch(e){}}
 function loadTheme(){let s='light';try{s=localStorage.getItem('todo-theme')||'light';}catch(e){}if(s==='dark'){document.body.classList.add('dark');document.documentElement.classList.add('dark-root');document.getElementById('theme-knob').textContent='🌙';}}
+
+/* ── PERSONALIZED TITLE — "(Name)'s Daily To-Do", click to rename.
+   Stored in the Supabase user's metadata (not localStorage) so it
+   follows the account across devices, same as the task data does. ── */
+function getOwnerName(){return (currentUser&&currentUser.user_metadata&&currentUser.user_metadata.display_name)||'';}
+async function setOwnerName(name){
+  const{data,error}=await sb.auth.updateUser({data:{display_name:name}});
+  if(error)throw error;
+  if(data&&data.user)currentUser=data.user;
+}
+function renderTodayTitle(){
+  const h1=document.getElementById('today-title');
+  const name=getOwnerName();
+  h1.textContent=name?`${name}'s Daily To-Do`:'Daily To-Do';
+}
+function startTitleEdit(){
+  const h1=document.getElementById('today-title');
+  if(h1.classList.contains('editing'))return;
+  h1.classList.add('editing');
+  h1.textContent='';
+
+  const input=document.createElement('input');
+  input.className='title-edit-input'; input.type='text'; input.maxLength=10;
+  input.value=getOwnerName(); input.placeholder='Name';
+  input.addEventListener('input',()=>{input.value=input.value.replace(/[^a-zA-Z]/g,'').slice(0,10);});
+
+  const confirmBtn=document.createElement('button');
+  confirmBtn.className='title-confirm-btn'; confirmBtn.type='button'; confirmBtn.setAttribute('aria-label','Confirm name');
+  confirmBtn.innerHTML='<svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>';
+  // Prevent the button from stealing focus (and blurring the input) on click.
+  confirmBtn.addEventListener('mousedown',e=>e.preventDefault());
+
+  h1.appendChild(input); h1.appendChild(confirmBtn);
+  input.focus(); input.select();
+
+  function exitEdit(){ h1.classList.remove('editing'); renderTodayTitle(); }
+
+  async function commit(){
+    const v=input.value.trim();
+    input.disabled=true; confirmBtn.disabled=true;
+    try{
+      await setOwnerName(v);
+      exitEdit();
+    }catch(e){
+      showToast("Couldn't save — check your connection");
+      exitEdit();
+    }
+  }
+
+  confirmBtn.addEventListener('click',e=>{e.stopPropagation();commit();});
+  input.addEventListener('keydown',e=>{
+    if(e.key==='Enter'){e.preventDefault();commit();}
+    else if(e.key==='Escape'){e.preventDefault();exitEdit();}
+  });
+  input.addEventListener('blur',()=>{exitEdit();});
+}
+document.getElementById('today-title').addEventListener('click',startTitleEdit);
 function checkNewDay(){const last=localStorage.getItem('todo-last-day'),today=dateKeyOffset(0);if(last&&last!==today)SECTIONS.forEach(s=>{state.today[s]=[];});localStorage.setItem('todo-last-day',today);}
 setInterval(()=>{const today=dateKeyOffset(0),last=localStorage.getItem('todo-last-day');if(last&&last!==today){SECTIONS.forEach(s=>{state.today[s]=[];render('today',s);});localStorage.setItem('todo-last-day',today);showToast('Good morning! Fresh lists for a new day ☀️');}},60000);
 function computeStreaks(y){
@@ -2090,6 +2161,7 @@ function confirmSignOut(){
 // every button, and reveals the app.
 async function onAuthReady(){
   hideAuthScreen();
+  renderTodayTitle();
   checkNewDay();
   document.querySelectorAll('#drum-backdrop').forEach(el=>el.remove());
 
@@ -2276,6 +2348,7 @@ document.getElementById('history-back-btn').addEventListener('click',closeHistor
 
 updateAuthModeUI();
 loadTheme(); // applied immediately (not gated behind auth) so the sign-in screen itself respects dark/light preference
+renderTodayTitle();
 
 // Ongoing auth changes (actual sign-in via the form, sign-out, or a
 // session expiring elsewhere) come through here.
