@@ -42,7 +42,7 @@ html.dark-root { background-color: #1e1b16; }
   --grad-full: linear-gradient(135deg,#FEDA75,#F58529,#DD2A7B,#8134AF,#5851DB);
   --ig-red: #ED4956;
 }
-body.dark {
+html.dark-root {
   --paper: #16121f;
   --paper-dark: #0e0b15;
   --ink: #f5f2fb;
@@ -469,7 +469,7 @@ body.dark .todo-item-inner,body.dark .drag-ghost { background:#16121f; }
 <div class="auth-overlay checking" id="auth-overlay">
   <div class="auth-card">
     <h1 class="auth-title">Daily To-Do</h1>
-    <div class="auth-loading" id="auth-loading">Loading…</div>
+    <div class="auth-loading" id="auth-loading"></div>
     <div class="auth-form-fields" id="auth-form-fields">
       <div class="auth-field"><input type="email" id="auth-email" placeholder="Email" autocomplete="email" autocapitalize="off"/></div>
       <div class="auth-field auth-password-field">
@@ -1393,7 +1393,16 @@ function attachItemHandlers(li,inner,bg,page,section,id){
         inner.style.transition='transform .2s cubic-bezier(.4,0,.2,1)';
         inner.style.transform='translate3d(-110%,0,0)';
         bg.style.opacity='1';
-        setTimeout(()=>deleteTask(page,section,id),190);
+        // Collapse the row's own height in parallel so items below glide
+        // up smoothly, instead of snapping the instant the node is removed.
+        const liHeight=li.getBoundingClientRect().height;
+        li.style.overflow='hidden';
+        li.style.height=liHeight+'px';
+        void li.offsetHeight; // force layout so the collapse below actually animates
+        li.style.transition='height .22s ease .08s, border-color .22s ease .08s';
+        li.style.height='0px';
+        li.style.borderBottomColor='transparent';
+        setTimeout(()=>deleteTask(page,section,id),300);
       } else {
         snapBack();
       }
